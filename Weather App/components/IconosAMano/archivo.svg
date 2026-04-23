@@ -1,0 +1,32 @@
+<svg width="140" height="140" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <path 
+    d="M 15 50 A 25 25 0 0 1 65 40" 
+    stroke="black" 
+    stroke-width="12" 
+    fill="none" 
+  />
+  <path 
+    d="M 30 20 A 25 25 0 0 1 65 50" 
+    stroke="white" 
+    stroke-width="12" 
+    fill="none" 
+  />
+  <path 
+    d="M 35 50 A 25 25 0 0 0 85 50" 
+    stroke="black" 
+    stroke-width="12" 
+    fill="none" 
+  />
+</svg>
+
+<svg width="140" height="140" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="black" stroke-width="12" fill="none" stroke-linecap="round">
+    
+    {/* Arco inferior - movido a la izquierda */}
+    <path d="M 18 50 a 25 25 0 0 0 50 0" />
+    
+    {/* Arco superior - movido a la derecha y desfasado */}
+    <path d="M 45 62 a 25 25 0 0 0 50 0" />
+    
+  </g>
+</svg>
