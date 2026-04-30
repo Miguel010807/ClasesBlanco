@@ -1,6 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, SafeAreaView } from 'react-native';
-import Svg, { Circle, Path, G, Line } from 'react-native-svg';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  SafeAreaView,
+} from 'react-native';
+import Svg, { Circle, Path, Line } from 'react-native-svg';
+import * as Location from 'expo-location';
 
 /* ---------------- TYPES ---------------- */
 
@@ -15,43 +24,38 @@ type WeatherDay = {
   code: number;
 };
 
+type LocationCoords = {
+  latitude: number;
+  longitude: number;
+};
+
 /* ---------------- ICONOS ---------------- */
 
 const SunIcon = () => (
   <Svg width={140} height={140} viewBox="0 0 100 100">
-    <Circle cx="50" cy="50" r="32" stroke="#000" strokeWidth="12" fill="none" />
+    <Circle cx="50" cy="50" r="35" fill="none" stroke="black" strokeWidth="8" />
   </Svg>
 );
 
 const RainIcon = () => (
-  <Svg width={140} height={140} viewBox="0 0 100 100">
-    <G stroke="#000" strokeWidth="12" strokeLinecap="butt">
-      {/* Líneas diagonales replicando el patrón escalonado */}
-      <Line x1="18" y1="65" x2="33" y2="35" />
-      <Line x1="33" y1="85" x2="63" y2="25" />
-      <Line x1="58" y1="65" x2="78" y2="25" />
-      <Line x1="78" y1="75" x2="88" y2="55" />
-    </G>
+  <Svg width={180} height={140} viewBox="0 0 180 140">
+    <Line x1="20" y1="85" x2="35" y2="55" stroke="black" strokeWidth="10" />
+    <Line x1="45" y1="95" x2="65" y2="55" stroke="black" strokeWidth="10" />
+    <Line x1="80" y1="115" x2="100" y2="35" stroke="black" strokeWidth="10" />
+    <Line x1="115" y1="95" x2="135" y2="55" stroke="black" strokeWidth="10" />
+    <Line x1="145" y1="110" x2="160" y2="80" stroke="black" strokeWidth="10" />
   </Svg>
 );
 
 const CloudIcon = () => (
-  <Svg width={140} height={140} viewBox="0 0 100 100">
-    {/* Arco superior */}
+  <Svg width={180} height={120} viewBox="0 0 180 120">
     <Path
-      d="M 15 50 A 25 25 0 0 1 65 50"
-      stroke="#000"
-      strokeWidth="12"
+      d="M55 90 H135 A25 25 0 0 0 135 40 A35 35 0 0 0 70 30 A28 28 0 0 0 55 90"
       fill="none"
-      strokeLinecap="butt"
-    />
-    {/* Arco inferior (desplazado hacia la derecha y hacia abajo visualmente por el arco) */}
-    <Path
-      d="M 35 50 A 25 25 0 0 0 85 50"
-      stroke="#000"
-      strokeWidth="12"
-      fill="none"
-      strokeLinecap="butt"
+      stroke="black"
+      strokeWidth="10"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     />
   </Svg>
 );
@@ -69,37 +73,64 @@ export default function WeatherApp() {
   const [weatherData, setWeatherData] = useState<WeatherDay[]>([]);
   const [dayIndex, setDayIndex] = useState<number>(1);
   const [loading, setLoading] = useState<boolean>(true);
+  const [city, setCity] = useState<string>('CARGANDO...');
 
   useEffect(() => {
     const fetchWeather = async () => {
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=-34.6118&longitude=-58.4173&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,relative_humidity_2m_mean,wind_speed_10m_mean,surface_pressure_mean&current=temperature_2m,relative_humidity_2m,wind_speed_10m,surface_pressure&past_days=1&forecast_days=2&wind_speed_unit=ms&timezone=auto`;
+        const { status } =
+          await Location.requestForegroundPermissionsAsync();
+
+        if (status !== 'granted') {
+          alert('Se necesita permiso de ubicación');
+          return;
+        }
+
+        const location = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude }: LocationCoords = location.coords;
+
+        const reverse = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
+
+        if (reverse.length > 0) {
+          setCity(
+            reverse[0].city?.toUpperCase() ||
+              reverse[0].region?.toUpperCase() ||
+              'UBICACIÓN'
+          );
+        }
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min,temperature_2m_mean,relative_humidity_2m_mean,wind_speed_10m_mean,surface_pressure_mean&current=temperature_2m,relative_humidity_2m,wind_speed_10m,surface_pressure&past_days=1&forecast_days=2&wind_speed_unit=ms&timezone=auto`;
 
         const res = await fetch(url);
         const data = await res.json();
 
-        const formatted: WeatherDay[] = data.daily.time.map((date: string, i: number) => {
-          const isToday = i === 1;
+        const formatted: WeatherDay[] = data.daily.time.map(
+          (date: string, i: number) => {
+            const isToday = i === 1;
 
-          return {
-            date: date.split('-').slice(1).reverse().join('/'),
-            temp: isToday
-              ? Math.round(data.current.temperature_2m)
-              : Math.round(data.daily.temperature_2m_mean[i]),
-            max: Math.round(data.daily.temperature_2m_max[i]),
-            min: Math.round(data.daily.temperature_2m_min[i]),
-            humidity: isToday
-              ? data.current.relative_humidity_2m
-              : Math.round(data.daily.relative_humidity_2m_mean[i]),
-            wind: isToday
-              ? data.current.wind_speed_10m
-              : data.daily.wind_speed_10m_mean[i],
-            pressure: isToday
-              ? data.current.surface_pressure
-              : Math.round(data.daily.surface_pressure_mean[i]),
-            code: data.daily.weather_code[i],
-          };
-        });
+            return {
+              date: date.split('-').slice(1).reverse().join('/'),
+              temp: isToday
+                ? Math.round(data.current.temperature_2m)
+                : Math.round(data.daily.temperature_2m_mean[i]),
+              max: Math.round(data.daily.temperature_2m_max[i]),
+              min: Math.round(data.daily.temperature_2m_min[i]),
+              humidity: isToday
+                ? data.current.relative_humidity_2m
+                : Math.round(data.daily.relative_humidity_2m_mean[i]),
+              wind: isToday
+                ? data.current.wind_speed_10m
+                : data.daily.wind_speed_10m_mean[i],
+              pressure: isToday
+                ? data.current.surface_pressure
+                : Math.round(data.daily.surface_pressure_mean[i]),
+              code: data.daily.weather_code[i],
+            };
+          }
+        );
 
         setWeatherData(formatted);
         setLoading(false);
@@ -114,7 +145,7 @@ export default function WeatherApp() {
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator />
+        <ActivityIndicator size="large" color="#000" />
       </View>
     );
   }
@@ -123,14 +154,12 @@ export default function WeatherApp() {
 
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* NAV */}
       <View style={styles.topNav}>
         <TouchableOpacity
           onPress={() => dayIndex > 0 && setDayIndex(dayIndex - 1)}
           disabled={dayIndex === 0}
         >
-          <Text style={[styles.smallDate, dayIndex === 0 && { opacity: 0 }]}>
+          <Text style={[styles.smallDate, dayIndex === 0 && styles.hidden]}>
             {weatherData[dayIndex - 1]?.date || ''}
           </Text>
         </TouchableOpacity>
@@ -138,18 +167,24 @@ export default function WeatherApp() {
         <Text style={styles.activeDate}>{current.date}</Text>
 
         <TouchableOpacity
-          onPress={() => dayIndex < weatherData.length - 1 && setDayIndex(dayIndex + 1)}
+          onPress={() =>
+            dayIndex < weatherData.length - 1 && setDayIndex(dayIndex + 1)
+          }
           disabled={dayIndex === weatherData.length - 1}
         >
-          <Text style={[styles.smallDate, dayIndex === weatherData.length - 1 && { opacity: 0 }]}>
+          <Text
+            style={[
+              styles.smallDate,
+              dayIndex === weatherData.length - 1 && styles.hidden,
+            ]}
+          >
             {weatherData[dayIndex + 1]?.date || ''}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* MAIN */}
       <View style={styles.mainContent}>
-        <Text style={styles.cityText}>BUENOS AIRES</Text>
+        <Text style={styles.cityText}>{city}</Text>
 
         <View style={styles.iconContainer}>
           {getWeatherIcon(current.code)}
@@ -162,7 +197,6 @@ export default function WeatherApp() {
         </View>
       </View>
 
-      {/* FOOTER */}
       <View style={styles.footer}>
         <View style={styles.tempRow}>
           <Text style={styles.sideTemp}>{current.min}°</Text>
@@ -172,11 +206,9 @@ export default function WeatherApp() {
 
         <Text style={styles.now}>NOW</Text>
       </View>
-
     </SafeAreaView>
   );
 }
-
 /* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
@@ -205,8 +237,15 @@ const styles = StyleSheet.create({
   },
 
   activeDate: {
+    fontSize: 14,
     fontWeight: '900',
     borderBottomWidth: 2,
+    borderColor: '#000',
+    paddingBottom: 2,
+  },
+
+  hidden: {
+    opacity: 0,
   },
 
   mainContent: {
@@ -222,7 +261,10 @@ const styles = StyleSheet.create({
   },
 
   iconContainer: {
-    marginVertical: 20,
+    width: 220,
+    height: 160,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   metrics: {
@@ -231,7 +273,8 @@ const styles = StyleSheet.create({
 
   metric: {
     fontWeight: '700',
-    marginVertical: 3,
+    marginVertical: 4,
+    fontSize: 14,
   },
 
   footer: {
@@ -258,5 +301,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontWeight: '900',
     fontSize: 10,
+    letterSpacing: 1,
   },
 });
