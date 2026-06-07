@@ -1,0 +1,64 @@
+---
+import Layout from '@layouts/Layout.astro';
+
+// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
+// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+---
+
+<Layout>
+	<h1>Piko Park<h1>
+		<canvas piko-park-canvas></canvas>	
+		<script>
+	import { crearMarco, crearUnCirculo, crearUnRectangulo } from "@cuerpos/cuerpos";
+	import { MotorFisico } from "@motor/motor";
+	const lienzos = document.querySelectorAll("canvas[piko-park-canvas]");
+
+	lienzos.forEach((lienzo) => {
+		const marco = crearMarco(lienzo);
+		const limitesLienzo = lienzo.getBoundingClientRect();
+
+		const motor = new MotorFisico({
+			lienzo,
+			cuerpos: marco
+		});
+
+		const cuadrado = crearUnRectangulo({
+			x: 100,
+			y: 100,
+			ancho: 50,
+			alto: 50,
+			colorDeRelleno: "#000"
+		});
+
+		motor.comenzar();
+		motor.agregarCuerpo(cuadrado);
+
+		const jugadores = new Map();
+
+		const ws = new WebSocket("ws://localhost:3000/ws");
+
+		ws.onmessage = (mensaje) => {
+			console.log("Mensaje:", mensaje.data);
+			console.log("hola")
+
+			const [id, accion] = mensaje.data.split(",");
+
+			if (accion === "nuevo") {
+				console.log("Creando círculo para:", id);
+
+				const circulo = crearUnCirculo({
+					x: limitesLienzo.width / 2,
+					y: limitesLienzo.height / 2,
+					radio: 10,
+					colorDeRelleno: "#000"
+				});
+
+				jugadores.set(id, circulo);
+				motor.agregarCuerpo(circulo);
+
+				console.log("Círculo agregado:", circulo);
+			}
+		};
+	});
+</script>
+</Layout>
