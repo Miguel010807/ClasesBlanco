@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "astro": "^6.4.4",
-    "metter-js": "^0.20.2"
+    "matter-js": "^0.20.0"
   },
   "devDependencies": {
     "@types/matter-js": "^0.20.2"

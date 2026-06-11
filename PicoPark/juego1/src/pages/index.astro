@@ -11,7 +11,7 @@ import Layout from '@layouts/Layout.astro';
 		<script>
 	import { crearMarco, crearUnCirculo, crearUnRectangulo } from "@cuerpos/cuerpos";
 	import { MotorFisico } from "@motor/motor";
-	const lienzos = document.querySelectorAll("canvas[piko-park-canvas]");
+  const lienzos = document.querySelectorAll<HTMLCanvasElement>("canvas[piko-park-canvas]");
 
 	lienzos.forEach((lienzo) => {
 		const marco = crearMarco(lienzo);
