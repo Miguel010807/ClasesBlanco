@@ -7,7 +7,7 @@ import {
   View
 } from "react-native"
 
-const socket = new WebSocket("ws://10.205.248.49:3000/ws")
+const socket = new WebSocket("ws://10.56.2.22:3000/ws")
 
 export default function App() {
   const [connected, setConnected] = useState(false)
@@ -83,7 +83,7 @@ export default function App() {
           </Text>
 
           <Text style={styles.serverText}>
-            192.168.0.15:3000
+            0.0.0.0
           </Text>
         </View>
       </View>

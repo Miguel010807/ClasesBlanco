@@ -1,27 +1,28 @@
 ---
 import Layout from '@layouts/Layout.astro';
-
+ 
 // Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
 // Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
 ---
-
+ 
 <Layout>
 	<h1>Piko Park<h1>
 		<canvas piko-park-canvas></canvas>	
 		<script>
+	import Matter from "matter-js";
 	import { crearMarco, crearUnCirculo, crearUnRectangulo } from "@cuerpos/cuerpos";
 	import { MotorFisico } from "@motor/motor";
   const lienzos = document.querySelectorAll<HTMLCanvasElement>("canvas[piko-park-canvas]");
-
+ 
 	lienzos.forEach((lienzo) => {
 		const marco = crearMarco(lienzo);
 		const limitesLienzo = lienzo.getBoundingClientRect();
-
+ 
 		const motor = new MotorFisico({
 			lienzo,
 			cuerpos: marco
 		});
-
+ 
 		const cuadrado = crearUnRectangulo({
 			x: 100,
 			y: 100,
@@ -29,36 +30,113 @@ import Layout from '@layouts/Layout.astro';
 			alto: 50,
 			colorDeRelleno: "#000"
 		});
-
+ 
 		motor.comenzar();
 		motor.agregarCuerpo(cuadrado);
-
-		const jugadores = new Map();
-
+ 
+		// Mapa id del jugador -> su círculo (cuerpo de Matter.js)
+		const jugadores = new Map<string, Matter.Body>();
+ 
+		// Mapa inverso: id interno del cuerpo de Matter.js -> id del jugador.
+		// Lo usamos para no tener que recorrer "jugadores" entero en cada
+		// colisión (Matter.Body.id es un número único que cada cuerpo ya tiene)
+		const idDeJugadorPorCuerpo = new Map<number, string>();
+ 
+		// Guardamos si cada jugador está tocando el piso, para no
+		// dejarlo saltar infinito mientras está en el aire
+		const enElPiso = new Map<string, boolean>();
+ 
+		const VELOCIDAD_HORIZONTAL = 5;
+		const VELOCIDAD_DE_SALTO = -10;
+ 
 		const ws = new WebSocket("ws://localhost:3000/ws");
-
+ 
 		ws.onmessage = (mensaje) => {
-			console.log("Mensaje:", mensaje.data);
-			console.log("hola")
-
-			const [id, accion] = mensaje.data.split(",");
-
+			const [id, accion] = String(mensaje.data).split(",");
+ 
 			if (accion === "nuevo") {
 				console.log("Creando círculo para:", id);
-
+ 
 				const circulo = crearUnCirculo({
 					x: limitesLienzo.width / 2,
 					y: limitesLienzo.height / 2,
 					radio: 10,
 					colorDeRelleno: "#000"
 				});
-
+ 
 				jugadores.set(id, circulo);
+				idDeJugadorPorCuerpo.set(circulo.id, id);
+				enElPiso.set(id, false);
 				motor.agregarCuerpo(circulo);
-
-				console.log("Círculo agregado:", circulo);
+ 
+				return;
+			}
+ 
+			const circulo = jugadores.get(id);
+ 
+			if (!circulo) {
+				// Mensaje de un jugador del que todavía no tenemos su círculo
+				// (por ejemplo si se reinició el juego pero no el mando)
+				return;
+			}
+ 
+			if (accion === "left") {
+				Matter.Body.setVelocity(circulo, {
+					x: -VELOCIDAD_HORIZONTAL,
+					y: circulo.velocity.y
+				});
+			}
+ 
+			if (accion === "right") {
+				Matter.Body.setVelocity(circulo, {
+					x: VELOCIDAD_HORIZONTAL,
+					y: circulo.velocity.y
+				});
+			}
+ 
+			if (accion === "stop") {
+				Matter.Body.setVelocity(circulo, {
+					x: 0,
+					y: circulo.velocity.y
+				});
+			}
+ 
+			if (accion === "jump") {
+				if (enElPiso.get(id)) {
+					Matter.Body.setVelocity(circulo, {
+						x: circulo.velocity.x,
+						y: VELOCIDAD_DE_SALTO
+					});
+				}
 			}
 		};
+ 
+		// Detectamos colisiones para saber si cada círculo está
+		// tocando el piso (marco) y así poder saltar de nuevo
+		const motorFisico = motor.obtenerMotor();
+ 
+		const marcarPiso = (idDelCuerpo: number, valor: boolean) => {
+			const idJugador = idDeJugadorPorCuerpo.get(idDelCuerpo);
+ 
+			if (idJugador !== undefined) {
+				enElPiso.set(idJugador, valor);
+			}
+		};
+ 
+		Matter.Events.on(motorFisico, "collisionStart", (evento) => {
+			for (const par of evento.pairs) {
+				marcarPiso(par.bodyA.id, true);
+				marcarPiso(par.bodyB.id, true);
+			}
+		});
+ 
+		Matter.Events.on(motorFisico, "collisionEnd", (evento) => {
+			for (const par of evento.pairs) {
+				marcarPiso(par.bodyA.id, false);
+				marcarPiso(par.bodyB.id, false);
+			}
+		});
 	});
 </script>
 </Layout>
+

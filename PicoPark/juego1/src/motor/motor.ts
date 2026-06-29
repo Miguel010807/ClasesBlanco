@@ -94,5 +94,12 @@ export class MotorFisico {
 		Matter.World.add(this.props.motor.world, cuerpo);
 		return this;
 	}
+  
+
+  obtenerMotor(): Matter.Engine {
+    return this.props.motor;
+  }
+
+
 }
 
