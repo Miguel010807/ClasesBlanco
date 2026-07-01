@@ -1,278 +1,366 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native"
 
-const socket = new WebSocket("ws://10.56.2.22:3000/ws")
+const SERVER_PORT = 3000
 
 export default function App() {
+  const [ip, setIp] = useState("")
+  const [conectando, setConectando] = useState(false)
+  const [error, setError] = useState("")
   const [connected, setConnected] = useState(false)
+  const socketRef = useRef<WebSocket | null>(null)
+  const myIdRef = useRef<string | null>(null)
 
-  useEffect(() => {
+  const conectar = () => {
+    if (!ip.trim()) {
+      setError("Ingresá la IP del servidor")
+      return
+    }
+
+    setConectando(true)
+    setError("")
+
+    const socket = new WebSocket(`ws://${ip.trim()}:${SERVER_PORT}/ws`)
+
+    const timeout = setTimeout(() => {
+      socket.close()
+      setConectando(false)
+      setError("No se pudo conectar. Verificá la IP y que el servidor esté corriendo.")
+    }, 5000)
+
     socket.onopen = () => {
-      console.log("conectado")
+      clearTimeout(timeout)
+      setConectando(false)
       setConnected(true)
+      socketRef.current = socket
     }
 
     socket.onclose = () => {
-      console.log("desconectado")
+      clearTimeout(timeout)
+      setConectando(false)
       setConnected(false)
+      socketRef.current = null
     }
 
     socket.onerror = () => {
-      setConnected(false)
+      clearTimeout(timeout)
+      setConectando(false)
+      setError("No se pudo conectar. Verificá la IP y que el servidor esté corriendo.")
+    }
+
+    socket.onmessage = (event) => {
+      const [id, accion] = String(event.data).split(",")
+      if (accion === "tu-id") {
+        myIdRef.current = id
+      }
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      socketRef.current?.close()
     }
   }, [])
 
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+  const enviar = (accion: string) => {
+    const socket = socketRef.current
+    if (!socket || socket.readyState !== WebSocket.OPEN) return
+    socket.send(accion)
+  }
 
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Text style={styles.title}>PICO PARK</Text>
+  const desconectar = () => {
+    socketRef.current?.close()
+    setConnected(false)
+    myIdRef.current = null
+  }
 
-        <View style={styles.connectionContainer}>
-          <View
-            style={[
-              styles.connectionDot,
-              {
-                backgroundColor: connected
-                  ? "#22c55e"
-                  : "#6b7280"
-              }
-            ]}
-          />
+  // ─── PANTALLA DE LOGIN ───────────────────────────────────────────────
+  if (!connected) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.loginContainer}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <StatusBar barStyle="light-content" />
 
-          <Text
-            style={[
-              styles.connectionText,
-              {
-                color: connected
-                  ? "#22c55e"
-                  : "#9ca3af"
-              }
-            ]}
-          >
-            {connected ? "Conectado" : "Desconectado"}
-          </Text>
-        </View>
-      </View>
+        <View style={styles.loginCard}>
+          <Text style={styles.loginTitle}>PICO PARK</Text>
+          <Text style={styles.loginSubtitle}>Conectate al servidor</Text>
 
-      {/* INFO */}
-      <View style={styles.infoCard}>
-        <View>
-          <Text style={styles.infoLabel}>
-            Jugador
-          </Text>
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>IP del servidor</Text>
+            <TextInput
+              style={styles.input}
+              value={ip}
+              onChangeText={(text) => {
+                setIp(text)
+                setError("")
+              }}
+              placeholder="ej: 10.56.2.8"
+              placeholderTextColor="#4b5563"
+              keyboardType="numeric"
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!conectando}
+            />
+            <Text style={styles.inputHint}>Puerto: {SERVER_PORT}</Text>
+          </View>
 
-          <Text style={styles.playerText}>
-            Jugador 1
-          </Text>
-        </View>
+          {error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : null}
 
-        <View style={styles.separator} />
-
-        <View>
-          <Text style={styles.infoLabel}>
-            Servidor
-          </Text>
-
-          <Text style={styles.serverText}>
-            0.0.0.0
-          </Text>
-        </View>
-      </View>
-
-      {/* CONTROLES */}
-      <View style={styles.controlsContainer}>
-        {/* DPAD */}
-        <View style={styles.dpad}>
           <Pressable
-            onPressIn={() =>
-              socket.send("up")
-            }
-            onPressOut={() =>
-              socket.send("stop")
-            }
-            style={styles.dpadButton}
+            onPress={conectar}
+            style={[styles.conectarButton, conectando && styles.conectarButtonDisabled]}
+            disabled={conectando}
           >
-            <Text style={styles.arrow}>
-              ↑
+            <Text style={styles.conectarText}>
+              {conectando ? "Conectando..." : "Conectar"}
             </Text>
           </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    )
+  }
 
+  // ─── PANTALLA DEL MANDO (HORIZONTAL) ────────────────────────────────
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" hidden />
+
+      {/* COLUMNA IZQUIERDA: header + dpad */}
+      <View style={styles.left}>
+
+        <View style={styles.header}>
+          <Text style={styles.title}>PICO PARK</Text>
+          <View style={styles.connectionContainer}>
+            <View style={[styles.connectionDot, { backgroundColor: "#22c55e" }]} />
+            <Text style={[styles.connectionText, { color: "#22c55e" }]}>
+              online
+            </Text>
+          </View>
+          <Pressable onPress={desconectar}>
+            <Text style={styles.desconectarText}>Desconectar</Text>
+          </Pressable>
+        </View>
+
+        {/* DPAD */}
+        <View style={styles.dpad}>
           <View style={styles.middleRow}>
             <Pressable
-              onPressIn={() =>
-                socket.send("left")
-              }
-              onPressOut={() =>
-                socket.send("stop")
-              }
+              onPressIn={() => enviar("left")}
+              onPressOut={() => enviar("stop")}
               style={styles.dpadButton}
             >
-              <Text style={styles.arrow}>
-                ←
-              </Text>
+              <Text style={styles.arrow}>←</Text>
             </Pressable>
 
             <View style={styles.centerGap} />
 
             <Pressable
-              onPressIn={() =>
-                socket.send("right")
-              }
-              onPressOut={() =>
-                socket.send("stop")
-              }
+              onPressIn={() => enviar("right")}
+              onPressOut={() => enviar("stop")}
               style={styles.dpadButton}
             >
-              <Text style={styles.arrow}>
-                →
-              </Text>
+              <Text style={styles.arrow}>→</Text>
             </Pressable>
           </View>
-
-          <Pressable
-            onPressIn={() =>
-              socket.send("down")
-            }
-            onPressOut={() =>
-              socket.send("stop")
-            }
-            style={styles.dpadButton}
-          >
-            <Text style={styles.arrow}>
-              ↓
-            </Text>
-          </Pressable>
         </View>
 
-        {/* BOTON SALTO */}
+      </View>
+
+      {/* COLUMNA DERECHA: info + saltar */}
+      <View style={styles.right}>
+
+        <View style={styles.infoCard}>
+          <Text style={styles.infoLabel}>Servidor</Text>
+          <Text style={styles.serverText}>{ip}:{SERVER_PORT}</Text>
+        </View>
+
         <Pressable
-          onPress={() => socket.send("jump")}
+          onPressIn={() => enviar("jump")}
           style={styles.jumpButton}
         >
-          <Text style={styles.jumpText}>
-            SALTAR
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* BOTONES EXTRA */}
-      <View style={styles.bottomButtons}>
-        <Pressable style={styles.blueButton}>
-          <Text style={styles.bottomText}>
-            ACCIÓN 1
-          </Text>
+          <Text style={styles.jumpText}>SALTAR</Text>
         </Pressable>
 
-        <Pressable style={styles.yellowButton}>
-          <Text style={styles.bottomText}>
-            ACCIÓN 2
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* FOOTER */}
-      <View style={styles.footer}>
-        <Text style={styles.footerTitle}>
-          Instrucciones
-        </Text>
-
-        <Text style={styles.footerText}>
-          Usa los controles para mover
-          a tu personaje y colaborar
-          con los demás jugadores.
-        </Text>
       </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  // ── LOGIN ──
+  loginContainer: {
+    flex: 1,
+    backgroundColor: "#050816",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 30
+  },
+
+  loginCard: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#111827",
+    borderRadius: 30,
+    padding: 35,
+    gap: 20
+  },
+
+  loginTitle: {
+    color: "white",
+    fontSize: 42,
+    fontWeight: "bold",
+    textAlign: "center"
+  },
+
+  loginSubtitle: {
+    color: "#9ca3af",
+    fontSize: 18,
+    textAlign: "center",
+    marginTop: -10
+  },
+
+  inputContainer: {
+    gap: 8
+  },
+
+  inputLabel: {
+    color: "#d1d5db",
+    fontSize: 16,
+    fontWeight: "600"
+  },
+
+  input: {
+    backgroundColor: "#1f2937",
+    borderRadius: 16,
+    padding: 16,
+    color: "white",
+    fontSize: 20,
+    borderWidth: 1,
+    borderColor: "#374151"
+  },
+
+  inputHint: {
+    color: "#6b7280",
+    fontSize: 13
+  },
+
+  errorText: {
+    color: "#f87171",
+    fontSize: 14,
+    textAlign: "center"
+  },
+
+  conectarButton: {
+    backgroundColor: "#9333ea",
+    borderRadius: 16,
+    padding: 18,
+    alignItems: "center",
+    marginTop: 5
+  },
+
+  conectarButtonDisabled: {
+    backgroundColor: "#6b21a8",
+    opacity: 0.7
+  },
+
+  conectarText: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold"
+  },
+
+  // ── MANDO ──
   container: {
     flex: 1,
     backgroundColor: "#050816",
-    paddingTop: 70,
-    paddingHorizontal: 20,
+    flexDirection: "row",
+    paddingHorizontal: 30,
+    paddingVertical: 20,
+    alignItems: "center",
     justifyContent: "space-between"
   },
 
-  header: {
+  left: {
+    flex: 1,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    height: "100%",
+    paddingVertical: 10
+  },
+
+  right: {
     alignItems: "center",
-    gap: 10
+    justifyContent: "space-between",
+    height: "100%",
+    paddingVertical: 10
+  },
+
+  header: {
+    gap: 6
   },
 
   title: {
     color: "white",
-    fontSize: 42,
+    fontSize: 32,
     fontWeight: "bold"
   },
 
   connectionContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10
+    gap: 8
   },
 
   connectionDot: {
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     borderRadius: 999
   },
 
   connectionText: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "600"
+  },
+
+  desconectarText: {
+    color: "#6b7280",
+    fontSize: 13,
+    marginTop: 2
   },
 
   infoCard: {
     backgroundColor: "#111827",
-    borderRadius: 30,
-    padding: 25,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    borderRadius: 20,
+    padding: 16,
     alignItems: "center"
   },
 
   infoLabel: {
     color: "#9ca3af",
-    fontSize: 18
-  },
-
-  playerText: {
-    color: "#a855f7",
-    fontSize: 24,
-    fontWeight: "bold",
-    marginTop: 8
+    fontSize: 14,
+    marginBottom: 4
   },
 
   serverText: {
     color: "white",
-    fontSize: 20,
-    marginTop: 8
-  },
-
-  separator: {
-    width: 1,
-    height: 70,
-    backgroundColor: "#374151"
-  },
-
-  controlsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
+    fontSize: 14,
+    fontWeight: "bold"
   },
 
   dpad: {
-    gap: 10,
     alignItems: "center"
   },
 
@@ -282,12 +370,12 @@ const styles = StyleSheet.create({
   },
 
   centerGap: {
-    width: 20
+    width: 16
   },
 
   dpadButton: {
-    width: 90,
-    height: 90,
+    width: 100,
+    height: 100,
     borderRadius: 25,
     backgroundColor: "#1f2937",
     justifyContent: "center",
@@ -296,13 +384,13 @@ const styles = StyleSheet.create({
 
   arrow: {
     color: "white",
-    fontSize: 38,
+    fontSize: 42,
     fontWeight: "bold"
   },
 
   jumpButton: {
-    width: 180,
-    height: 180,
+    width: 160,
+    height: 160,
     borderRadius: 999,
     backgroundColor: "#9333ea",
     justifyContent: "center",
@@ -311,56 +399,7 @@ const styles = StyleSheet.create({
 
   jumpText: {
     color: "white",
-    fontSize: 28,
-    fontWeight: "bold"
-  },
-
-  bottomButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between"
-  },
-
-  blueButton: {
-    width: 150,
-    height: 80,
-    borderRadius: 25,
-    backgroundColor: "#2563eb",
-    justifyContent: "center",
-    alignItems: "center"
-  },
-
-  yellowButton: {
-    width: 150,
-    height: 80,
-    borderRadius: 25,
-    backgroundColor: "#eab308",
-    justifyContent: "center",
-    alignItems: "center"
-  },
-
-  bottomText: {
-    color: "white",
-    fontSize: 22,
-    fontWeight: "bold"
-  },
-
-  footer: {
-    backgroundColor: "#111827",
-    borderRadius: 30,
-    padding: 25,
-    marginBottom: 30
-  },
-
-  footerTitle: {
-    color: "#a855f7",
     fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 10
-  },
-
-  footerText: {
-    color: "#d1d5db",
-    fontSize: 18,
-    lineHeight: 28
+    fontWeight: "bold"
   }
 })
