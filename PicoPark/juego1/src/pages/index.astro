@@ -1,162 +1,355 @@
 ---
 import Layout from '@layouts/Layout.astro';
- 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
 ---
- 
+
 <Layout>
-	<h1>Piko Park<h1>
-		<canvas piko-park-canvas></canvas>	
-		<script>
+	<div class="interfaz-juego">
+		<h1>Piko Park - Nivel 1: DOBLE PELIGRO 💀💀</h1>
+		<p id="indicador-nivel" class="cartel">🔑 Plataformas con agarre. ¡Calculá el doble salto!</p>
+	</div>
+	<canvas piko-park-canvas class="pantalla-completa"></canvas>	
+	
+	<script>
 	import Matter from "matter-js";
-	import { crearMarco, crearUnCirculo, crearUnRectangulo } from "@cuerpos/cuerpos";
+	import { crearUnCirculo, crearUnRectangulo } from "@cuerpos/cuerpos";
 	import { MotorFisico } from "@motor/motor";
-  const lienzos = document.querySelectorAll<HTMLCanvasElement>("canvas[piko-park-canvas]");
- 
+
+	const lienzos = document.querySelectorAll<HTMLCanvasElement>("canvas[piko-park-canvas]");
+	const cartelIndicador = document.getElementById("indicador-nivel");
+
 	lienzos.forEach((lienzo) => {
-		const marco = crearMarco(lienzo);
-		const limitesLienzo = lienzo.getBoundingClientRect();
- 
-		const motor = new MotorFisico({
-			lienzo,
-			cuerpos: marco
+		const ajustarTamaño = () => {
+			lienzo.width = window.innerWidth;
+			lienzo.height = window.innerHeight;
+		};
+		ajustarTamaño();
+
+		// 🛠️ MARCO PERSONALIZADO (Sin piso para que puedas caer al vacío de verdad)
+		const paredIzquierda = crearUnRectangulo({ x: -10, y: lienzo.height / 2, ancho: 20, alto: lienzo.height * 2, colorDeRelleno: "transparent" });
+		const paredDerecha = crearUnRectangulo({ x: lienzo.width + 10, y: lienzo.height / 2, ancho: 20, alto: lienzo.height * 2, colorDeRelleno: "transparent" });
+		const techo = crearUnRectangulo({ x: lienzo.width / 2, y: -10, ancho: lienzo.width, alto: 20, colorDeRelleno: "transparent" });
+		
+		Matter.Body.setStatic(paredIzquierda, true);
+		Matter.Body.setStatic(paredDerecha, true);
+		Matter.Body.setStatic(techo, true);
+
+		const motor = new MotorFisico({ lienzo, cuerpos: [paredIzquierda, paredDerecha, techo] });
+
+		// 💀 SENSOR DE VACÍO (Un piso físico abajo de la pantalla que detecta la muerte al tocarlo)
+		const zonaMuerte = crearUnRectangulo({
+			x: lienzo.width / 2,
+			y: lienzo.height + 60,
+			ancho: lienzo.width * 2,
+			alto: 40,
+			colorDeRelleno: "transparent"
 		});
- 
-		const cuadrado = crearUnRectangulo({
-			x: 100,
-			y: 100,
-			ancho: 50,
-			alto: 50,
-			colorDeRelleno: "#000"
+		Matter.Body.setStatic(zonaMuerte, true);
+		zonaMuerte.isSensor = true; // Al ser sensor, no te frena, te deja pasar pero avisa que lo tocaste
+
+		// 🧱 PLATAFORMAS ESTÁTICAS
+		const sueloInicio = crearUnRectangulo({
+			x: 120, y: lienzo.height - 60, ancho: 200, alto: 40, colorDeRelleno: "#333"
 		});
- 
+		Matter.Body.setStatic(sueloInicio, true);
+
+		const flotanteLlave = crearUnRectangulo({
+			x: 150, y: lienzo.height - 280, ancho: 100, alto: 25, colorDeRelleno: "#555"
+		});
+		Matter.Body.setStatic(flotanteLlave, true);
+
+		// ✨ LAS DOS PLATAFORMAS MÓVILES
+		const movil1 = crearUnRectangulo({
+			x: lienzo.width * 0.4, y: lienzo.height - 150, ancho: 120, alto: 20, colorDeRelleno: "#bc4749"
+		});
+		Matter.Body.setStatic(movil1, true);
+
+		const movil2 = crearUnRectangulo({
+			x: lienzo.width * 0.65, y: lienzo.height - 200, ancho: 120, alto: 20, colorDeRelleno: "#bc4749"
+		});
+		Matter.Body.setStatic(movil2, true);
+
+		const sueloSalida = crearUnRectangulo({
+			x: lienzo.width - 120, y: lienzo.height - 60, ancho: 200, alto: 40, colorDeRelleno: "#333"
+		});
+		Matter.Body.setStatic(sueloSalida, true);
+
+		// 🚪 PUERTA COMPUESTA
+		const PUERTA_X = lienzo.width - 100;
+		const PUERTA_Y = lienzo.height - 130;
+
+		const puertaFondo = crearUnRectangulo({
+			x: PUERTA_X, y: PUERTA_Y, ancho: 50, alto: 100, colorDeRelleno: "#8B4513"
+		});
+		Matter.Body.setStatic(puertaFondo, true);
+		puertaFondo.isSensor = true;
+
+		const marcoIzq = crearUnRectangulo({
+			x: PUERTA_X - 28, y: PUERTA_Y, ancho: 6, alto: 100, colorDeRelleno: "#5c2c0c"
+		});
+		Matter.Body.setStatic(marcoIzq, true);
+
+		const marcoDer = crearUnRectangulo({
+			x: PUERTA_X + 28, y: PUERTA_Y, ancho: 6, alto: 100, colorDeRelleno: "#5c2c0c"
+		});
+		Matter.Body.setStatic(marcoDer, true);
+
+		let perilla: Matter.Body | null = null;
+		let llaveCabeza: Matter.Body | null = null;
+		let llaveCuerpo: Matter.Body | null = null;
+
+		let tieneLlave = false;
+		const jugadoresEnPuerta = new Set<string>();
+
+		function spawnearLlaveYPerilla() {
+			const motorFisico = motor.obtenerMotor();
+			if (perilla) Matter.World.remove(motorFisico.world, perilla);
+			if (llaveCabeza) Matter.World.remove(motorFisico.world, llaveCabeza);
+			if (llaveCuerpo) Matter.World.remove(motorFisico.world, llaveCuerpo);
+
+			perilla = crearUnRectangulo({
+				x: (lienzo.width - 100) + 15, y: lienzo.height - 130, ancho: 8, alto: 8, colorDeRelleno: "#FFD700"
+			});
+			Matter.Body.setStatic(perilla, true);
+			perilla.isSensor = true;
+
+			const LLAVE_BASE_X = 150;
+			const LLAVE_BASE_Y = lienzo.height - 330;
+
+			llaveCabeza = crearUnCirculo({
+				x: LLAVE_BASE_X, y: LLAVE_BASE_Y, radio: 12, colorDeRelleno: "#FFD700"
+			});
+			llaveCuerpo = crearUnRectangulo({
+				x: LLAVE_BASE_X + 18, y: LLAVE_BASE_Y, ancho: 24, alto: 6, colorDeRelleno: "#FFD700"
+			});
+			Matter.Body.setStatic(llaveCabeza, true);
+			Matter.Body.setStatic(llaveCuerpo, true);
+			llaveCabeza.isSensor = true;
+			llaveCuerpo.isSensor = true;
+
+			motor.agregarCuerpo(perilla);
+			motor.agregarCuerpo(llaveCabeza);
+			motor.agregarCuerpo(llaveCuerpo);
+		}
+
+		function reiniciarNivel() {
+			tieneLlave = false;
+			jugadoresEnPuerta.clear();
+			puertaFondo.render.fillStyle = "#8B4513";
+			spawnearLlaveYPerilla();
+
+			jugadores.forEach((circulo) => {
+				Matter.Body.setPosition(circulo, { x: 70, y: lienzo.height - 150 });
+				Matter.Body.setVelocity(circulo, { x: 0, y: 0 });
+			});
+			actualizarCartel();
+		}
+
 		motor.comenzar();
-		motor.agregarCuerpo(cuadrado);
- 
-		// Mapa id del jugador -> su círculo (cuerpo de Matter.js)
+		motor.agregarCuerpo(zonaMuerte); // Metemos el sensor de muerte al motor
+		motor.agregarCuerpo(sueloInicio);
+		motor.agregarCuerpo(flotanteLlave);
+		motor.agregarCuerpo(movil1);
+		motor.agregarCuerpo(movil2);
+		motor.agregarCuerpo(sueloSalida);
+		motor.agregarCuerpo(puertaFondo);
+		motor.agregarCuerpo(marcoIzq);
+		motor.agregarCuerpo(marcoDer);
+		
+		spawnearLlaveYPerilla();
+
+		let tiempo = 0;
 		const jugadores = new Map<string, Matter.Body>();
- 
-		// Mapa inverso: id interno del cuerpo de Matter.js -> id del jugador.
-		// Lo usamos para no tener que recorrer "jugadores" entero en cada
-		// colisión (Matter.Body.id es un número único que cada cuerpo ya tiene)
 		const idDeJugadorPorCuerpo = new Map<number, string>();
- 
-		// Guardamos si cada jugador está tocando el piso, para no
-		// dejarlo saltar infinito mientras está en el aire
 		const enElPiso = new Map<string, boolean>();
- 
+		const plataformaActualJugador = new Map<string, Matter.Body | null>();
+		const inputsJugadores = new Map<string, { izquierda: boolean; derecha: boolean; saltar: boolean }>();
+
 		const VELOCIDAD_HORIZONTAL = 5;
-		const VELOCIDAD_DE_SALTO = -10;
- 
+		const VELOCIDAD_DE_SALTO = -12.5;
+
 		const ws = new WebSocket("ws://localhost:3000/ws-host");
- 
-		ws.onmessage = (mensaje) => {
-			const [id, accion, color] = String(mensaje.data).split(",");
- 
-			if (accion === "nuevo") {
-				console.log("Creando círculo para:", id, "color:", color);
- 
-				const circulo = crearUnCirculo({
-					x: limitesLienzo.width / 2,
-					y: limitesLienzo.height / 2,
-					radio: 10,
-					colorDeRelleno: color ?? "#000"
-				});
- 
-				jugadores.set(id, circulo);
-				idDeJugadorPorCuerpo.set(circulo.id, id);
-				enElPiso.set(id, false);
-				motor.agregarCuerpo(circulo);
- 
+
+		ws.onmessage = (evento) => {
+			let rawData = evento.data; let data;
+			try {
+				const indiceJson = rawData.indexOf('{');
+				if (indiceJson > 0) rawData = rawData.slice(indiceJson);
+				data = JSON.parse(rawData);
+			} catch (e) { return; }
+
+			if (data.tipo === "estado-inicial") {
+				data.jugadores.forEach((j: any) => crearJugador(j.id, j.color));
 				return;
 			}
- 
-			if (accion === "se-fue") {
-				// Un jugador se desconectó: sacamos su círculo del mundo
-				// físico y limpiamos nuestros mapas
-				const circuloQueSeVa = jugadores.get(id);
- 
-				if (circuloQueSeVa) {
-					Matter.World.remove(motor.obtenerMotor().world, circuloQueSeVa);
-					idDeJugadorPorCuerpo.delete(circuloQueSeVa.id);
-				}
- 
-				jugadores.delete(id);
-				enElPiso.delete(id);
+			if (data.tipo === "nuevo-jugador") {
+				crearJugador(data.id, data.color);
+				actualizarCartel();
 				return;
 			}
- 
-			if (accion === "sala-llena") {
-				console.log("No entraste: ya hay 4 jugadores conectados");
+			if (data.tipo === "jugador-desconectado") {
+				const circulo = jugadores.get(data.id);
+				if (circulo) Matter.World.remove(motor.obtenerMotor().world, circulo);
+				jugadores.delete(data.id);
+				idDeJugadorPorCuerpo.delete(circulo?.id || 0);
+				enElPiso.delete(data.id);
+				plataformaActualJugador.delete(data.id);
+				inputsJugadores.delete(data.id);
+				jugadoresEnPuerta.delete(data.id);
+				actualizarCartel();
 				return;
 			}
- 
-			const circulo = jugadores.get(id);
- 
-			if (!circulo) {
-				// Mensaje de un jugador del que todavía no tenemos su círculo
-				// (por ejemplo si se reinició el juego pero no el mando)
-				return;
-			}
- 
-			if (accion === "left") {
-				Matter.Body.setVelocity(circulo, {
-					x: -VELOCIDAD_HORIZONTAL,
-					y: circulo.velocity.y
-				});
-			}
- 
-			if (accion === "right") {
-				Matter.Body.setVelocity(circulo, {
-					x: VELOCIDAD_HORIZONTAL,
-					y: circulo.velocity.y
-				});
-			}
- 
-			if (accion === "stop") {
-				Matter.Body.setVelocity(circulo, {
-					x: 0,
-					y: circulo.velocity.y
-				});
-			}
- 
-			if (accion === "jump") {
-				if (enElPiso.get(id)) {
-					Matter.Body.setVelocity(circulo, {
-						x: circulo.velocity.x,
-						y: VELOCIDAD_DE_SALTO
-					});
-				}
+			if (data.tipo === "actualizar-input") {
+				inputsJugadores.set(data.id, data.inputs);
 			}
 		};
- 
-		// Detectamos colisiones para saber si cada círculo está
-		// tocando el piso (marco) y así poder saltar de nuevo
+
+		function crearJugador(id: string, color: string) {
+			if (jugadores.has(id)) return;
+			const circulo = crearUnCirculo({
+				x: 70, y: lienzo.height - 150, radio: 18, colorDeRelleno: color ?? "#000"
+			});
+			jugadores.set(id, circulo);
+			idDeJugadorPorCuerpo.set(circulo.id, id);
+			enElPiso.set(id, false);
+			plataformaActualJugador.set(id, null);
+			inputsJugadores.set(id, { izquierda: false, derecha: false, saltar: false });
+			motor.agregarCuerpo(circulo);
+		}
+
+		// 🔄 GAME LOOP
+		motor.antesDeActualizar(() => {
+			tiempo += 0.02; 
+
+			const viejaX1 = movil1.position.x;
+			const viejaX2 = movil2.position.x;
+
+			const centroX1 = lienzo.width * 0.4;
+			const centroX2 = lienzo.width * 0.65;
+			const rango = lienzo.width * 0.08;
+
+			const nuevaX1 = centroX1 + Math.sin(tiempo) * rango;
+			const nuevaX2 = centroX2 + Math.cos(tiempo) * rango;
+
+			Matter.Body.setPosition(movil1, { x: nuevaX1, y: movil1.position.y });
+			Matter.Body.setPosition(movil2, { x: nuevaX2, y: movil2.position.y });
+
+			const deltaX1 = nuevaX1 - viejaX1;
+			const deltaX2 = nuevaX2 - viejaX2;
+
+			jugadores.forEach((circulo, id) => {
+				const inputs = inputsJugadores.get(id);
+				if (!inputs) return;
+
+				const platSoportada = plataformaActualJugador.get(id);
+				if (platSoportada === movil1) {
+					Matter.Body.setPosition(circulo, { x: circulo.position.x + deltaX1, y: circulo.position.y });
+				} else if (platSoportada === movil2) {
+					Matter.Body.setPosition(circulo, { x: circulo.position.x + deltaX2, y: circulo.position.y });
+				}
+
+				let velX = 0;
+				if (inputs.izquierda) velX = -VELOCIDAD_HORIZONTAL;
+				if (inputs.derecha) velX = VELOCIDAD_HORIZONTAL;
+
+				Matter.Body.setVelocity(circulo, { x: velX, y: circulo.velocity.y });
+
+				if (inputs.saltar && enElPiso.get(id)) {
+					Matter.Body.setVelocity(circulo, { x: circulo.velocity.x, y: VELOCIDAD_DE_SALTO });
+					enElPiso.set(id, false);
+					plataformaActualJugador.set(id, null);
+					inputs.saltar = false; 
+				}
+			});
+		});
+
+		function actualizarCartel() {
+			if (!cartelIndicador) return;
+			const conectados = jugadores.size;
+			if (!tieneLlave) {
+				cartelIndicador.innerHTML = `💀 MODO IMPOSIBLE: Agarrá la llave real (${conectados} jugando)`;
+				cartelIndicador.style.color = "#d90429";
+			} else {
+				const listos = jugadoresEnPuerta.size;
+				if (listos === conectados && conectados > 0) {
+					cartelIndicador.innerHTML = "🏆 ¡DIOS MÍO, LO PASASTE! Sos un crack.";
+					cartelIndicador.style.color = "#2a9d8f";
+				} else {
+					cartelIndicador.innerHTML = `🚪 ¡Puerta Abierta! Cruzá el puente móvil (${listos}/${conectados} listos)`;
+					cartelIndicador.style.color = "#e76f51";
+				}
+			}
+		}
+
 		const motorFisico = motor.obtenerMotor();
- 
-		const marcarPiso = (idDelCuerpo: number, valor: boolean) => {
-			const idJugador = idDeJugadorPorCuerpo.get(idDelCuerpo);
- 
-			if (idJugador !== undefined) {
-				enElPiso.set(idJugador, valor);
-			}
-		};
- 
+
 		Matter.Events.on(motorFisico, "collisionStart", (evento) => {
 			for (const par of evento.pairs) {
-				marcarPiso(par.bodyA.id, true);
-				marcarPiso(par.bodyB.id, true);
+				const idA = idDeJugadorPorCuerpo.get(par.bodyA.id);
+				const idB = idDeJugadorPorCuerpo.get(par.bodyB.id);
+				const jugadorId = idA || idB;
+				const cuerpoJugador = idA ? par.bodyA : (idB ? par.bodyB : null);
+				const cuerpoObstaculo = idA ? par.bodyB : par.bodyA;
+
+				if (jugadorId && cuerpoJugador) {
+					// 💀 SI EL JUGADOR COCOCA LA ZONA DE MUERTE ABAJO DE TODO
+					if (cuerpoObstaculo === zonaMuerte) {
+						reiniciarNivel();
+						return; // Frenamos el procesamiento de esta colisión porque ya se reseteó
+					}
+
+					if (cuerpoObstaculo === sueloInicio || cuerpoObstaculo === flotanteLlave || cuerpoObstaculo === movil1 || cuerpoObstaculo === movil2 || cuerpoObstaculo === sueloSalida) {
+						enElPiso.set(jugadorId, true);
+						plataformaActualJugador.set(jugadorId, cuerpoObstaculo);
+					}
+
+					if ((cuerpoObstaculo === llaveCabeza || cuerpoObstaculo === llaveCuerpo) && !tieneLlave) {
+						tieneLlave = true;
+						if (llaveCabeza) Matter.World.remove(motorFisico.world, llaveCabeza);
+						if (llaveCuerpo) Matter.World.remove(motorFisico.world, llaveCuerpo);
+						if (perilla) Matter.World.remove(motorFisico.world, perilla);
+						puertaFondo.render.fillStyle = "#111111"; 
+						actualizarCartel();
+					}
+
+					if (cuerpoObstaculo === puertaFondo) {
+						jugadoresEnPuerta.add(jugadorId);
+						actualizarCartel();
+					}
+				}
 			}
 		});
- 
+
 		Matter.Events.on(motorFisico, "collisionEnd", (evento) => {
 			for (const par of evento.pairs) {
-				marcarPiso(par.bodyA.id, false);
-				marcarPiso(par.bodyB.id, false);
+				const idA = idDeJugadorPorCuerpo.get(par.bodyA.id);
+				const idB = idDeJugadorPorCuerpo.get(par.bodyB.id);
+				const jugadorId = idA || idB;
+				const cuerpoObstaculo = idA ? par.bodyB : par.bodyA;
+
+				if (jugadorId) {
+					if (cuerpoObstaculo === sueloInicio || cuerpoObstaculo === flotanteLlave || cuerpoObstaculo === movil1 || cuerpoObstaculo === movil2 || cuerpoObstaculo === sueloSalida) {
+						enElPiso.set(jugadorId, false);
+						if (plataformaActualJugador.get(jugadorId) === cuerpoObstaculo) {
+							plataformaActualJugador.set(jugadorId, null);
+						}
+					}
+
+					if (cuerpoObstaculo === puertaFondo) {
+						jugadoresEnPuerta.delete(jugadorId);
+						actualizarCartel();
+					}
+				}
 			}
 		});
+		
+		actualizarCartel();
 	});
-</script>
-</Layout>
+	</script>
 
+	<style>
+		.interfaz-juego { position: absolute; top: 15px; left: 20px; font-family: sans-serif; z-index: 10; }
+		h1 { margin: 0; color: #d90429; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; }
+		.cartel { margin: 5px 0 0 0; font-size: 16px; font-weight: bold; background: rgba(255, 255, 255, 0.9); padding: 6px 12px; border-radius: 6px; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+		.pantalla-completa { display: block; position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #1a1a2e; }
+	</style>
+</Layout>
