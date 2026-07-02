@@ -49,19 +49,19 @@ import Layout from '@layouts/Layout.astro';
 		const VELOCIDAD_HORIZONTAL = 5;
 		const VELOCIDAD_DE_SALTO = -10;
  
-		const ws = new WebSocket("ws://localhost:3000/ws");
+		const ws = new WebSocket("ws://localhost:3000/ws-host");
  
 		ws.onmessage = (mensaje) => {
-			const [id, accion] = String(mensaje.data).split(",");
+			const [id, accion, color] = String(mensaje.data).split(",");
  
 			if (accion === "nuevo") {
-				console.log("Creando círculo para:", id);
+				console.log("Creando círculo para:", id, "color:", color);
  
 				const circulo = crearUnCirculo({
 					x: limitesLienzo.width / 2,
 					y: limitesLienzo.height / 2,
 					radio: 10,
-					colorDeRelleno: "#000"
+					colorDeRelleno: color ?? "#000"
 				});
  
 				jugadores.set(id, circulo);
@@ -69,6 +69,26 @@ import Layout from '@layouts/Layout.astro';
 				enElPiso.set(id, false);
 				motor.agregarCuerpo(circulo);
  
+				return;
+			}
+ 
+			if (accion === "se-fue") {
+				// Un jugador se desconectó: sacamos su círculo del mundo
+				// físico y limpiamos nuestros mapas
+				const circuloQueSeVa = jugadores.get(id);
+ 
+				if (circuloQueSeVa) {
+					Matter.World.remove(motor.obtenerMotor().world, circuloQueSeVa);
+					idDeJugadorPorCuerpo.delete(circuloQueSeVa.id);
+				}
+ 
+				jugadores.delete(id);
+				enElPiso.delete(id);
+				return;
+			}
+ 
+			if (accion === "sala-llena") {
+				console.log("No entraste: ya hay 4 jugadores conectados");
 				return;
 			}
  

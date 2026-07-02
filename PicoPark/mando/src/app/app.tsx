@@ -17,6 +17,7 @@ export default function App() {
   const [conectando, setConectando] = useState(false)
   const [error, setError] = useState("")
   const [connected, setConnected] = useState(false)
+  const [miColor, setMiColor] = useState<string | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const myIdRef = useRef<string | null>(null)
 
@@ -58,9 +59,16 @@ export default function App() {
     }
 
     socket.onmessage = (event) => {
-      const [id, accion] = String(event.data).split(",")
+      const [id, accion, color] = String(event.data).split(",")
+
       if (accion === "tu-id") {
         myIdRef.current = id
+        if (color) setMiColor(color)
+      }
+
+      if (accion === "sala-llena") {
+        setError("Ya hay 4 jugadores conectados. Esperá que se libere un lugar.")
+        socket.close()
       }
     }
   }
@@ -144,11 +152,14 @@ export default function App() {
         <View style={styles.header}>
           <Text style={styles.title}>PICO PARK</Text>
           <View style={styles.connectionContainer}>
-            <View style={[styles.connectionDot, { backgroundColor: "#22c55e" }]} />
+            <View style={[styles.connectionDot, { backgroundColor: miColor ?? "#22c55e" }]} />
             <Text style={[styles.connectionText, { color: "#22c55e" }]}>
               online
             </Text>
           </View>
+          {miColor ? (
+            <Text style={styles.colorText}>Tu personaje: {miColor}</Text>
+          ) : null}
           <Pressable onPress={desconectar}>
             <Text style={styles.desconectarText}>Desconectar</Text>
           </Pressable>
@@ -189,7 +200,7 @@ export default function App() {
 
         <Pressable
           onPressIn={() => enviar("jump")}
-          style={styles.jumpButton}
+          style={[styles.jumpButton, miColor ? { backgroundColor: miColor } : null]}
         >
           <Text style={styles.jumpText}>SALTAR</Text>
         </Pressable>
@@ -339,6 +350,11 @@ const styles = StyleSheet.create({
     color: "#6b7280",
     fontSize: 13,
     marginTop: 2
+  },
+
+  colorText: {
+    color: "#9ca3af",
+    fontSize: 13
   },
 
   infoCard: {
