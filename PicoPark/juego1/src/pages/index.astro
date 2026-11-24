@@ -167,7 +167,7 @@ import Layout from '@layouts/Layout.astro';
 		const VELOCIDAD_HORIZONTAL = 5;
 		const VELOCIDAD_DE_SALTO = -12.5;
 
-		const ws = new WebSocket("ws://localhost:3000/ws-host");
+		const ws = new WebSocket(`ws://${window.location.hostname}:3031/ws-host`);
 
 		ws.onmessage = (evento) => {
 			let rawData = evento.data; let data;
@@ -246,7 +246,6 @@ import Layout from '@layouts/Layout.astro';
 				} else if (platSoportada === movil2) {
 					Matter.Body.setPosition(circulo, { x: circulo.position.x + deltaX2, y: circulo.position.y });
 				}
-
 				let velX = 0;
 				if (inputs.izquierda) velX = -VELOCIDAD_HORIZONTAL;
 				if (inputs.derecha) velX = VELOCIDAD_HORIZONTAL;

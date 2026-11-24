@@ -10,7 +10,7 @@ import {
   View
 } from "react-native"
 
-const SERVER_PORT = 3000
+const SERVER_PORT = 3005
 
 export default function App() {
   const [ip, setIp] = useState("")
